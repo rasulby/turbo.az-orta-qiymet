@@ -1,93 +1,95 @@
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-def urlt(turbo, x): 
-    turbo1 = turbo[0:28]
-    turbo2 = turbo[29:]
-    turbo = turbo1+str(x)+turbo2
-    # url = f'https://turbo.az/autos?page=5&q%5Bavailability_status%5D=&q%5Bbarter%5D=0&q%5Bcrashed%5D=1&q%5Bcurrency%5D=azn&q%5Bengine_volume_from%5D=&q%5Bengine_volume_to%5D=&q%5Bfor_spare_parts%5D=0&q%5Bloan%5D=0&q%5Bmake%5D%5B%5D=23&q%5Bmileage_from%5D=&q%5Bmileage_to%5D=&q%5Bmodel%5D%5B%5D=&q%5Bmodel%5D%5B%5D=946&q%5Bonly_shops%5D=&q%5Bpainted%5D=1&q%5Bpower_from%5D=&q%5Bpower_to%5D=&q%5Bprice_from%5D=&q%5Bprice_to%5D=&q%5Bregion%5D%5B%5D=&q%5Bsort%5D=&q%5Bused%5D=&q%5Byear_from%5D=2004&q%5Byear_to%5D=2008'
-    url = turbo
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    response = requests.get(url, headers=headers)
+
+def set_page(url, page_number):
+    parsed = urlparse(url)
+    query_params = parse_qs(parsed.query)
+
+    query_params['page'] = [str(page_number)]
+
+    new_query = urlencode(query_params, doseq=True)
+    new_url = urlunparse(parsed._replace(query=new_query))
+
+    return new_url
+
+
+def urlt(turbo): 
+    headers = {
+        'User-Agent': 'Mozilla/5.0'
+    }
+
+    response = requests.get(turbo, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    prices = soup.find_all('div', class_='product-price') #class-i product-price olan butun div-leri tapsin
-    title = soup.find('div', class_='products-i__name products-i__bottom-text') #avtomobilin adi (avtomobilin adin duzgun cixarmir, BMW 5 series secende, BMW 540 kimi ad gelir)
-    years = soup.find_all('div', class_='products-i__attributes products-i__bottom-text') #avtomobilin ili
-    car_names = soup.find_all('div', class_='products-i__name products-i__bottom-text')#avtomobillerin adin cixarir
-    # car_years = soup.find_all('div', class_='products-i__attributes products-i__bottom-text')#avtomobilin ilin cixarir
+    prices = soup.find_all('div', class_='products-i__price products-i__bottom-text')
+    years = soup.find_all('div', class_='products-i__attributes products-i__bottom-text')
+    car_names = soup.find_all('div', class_='products-i__name products-i__bottom-text')
 
-    # total_price = sum([int(price.get_text().replace(' ', '').replace('AZN', '').replace('$', '')) for price in prices]) #Elave edilmeli: dollar isaresi varsa, hemin qiymeti hesablamasin !!!
     total_price = 0
-    average = 0
+    count = 0
+
     for price in prices:
-        if 'AZN' in price.get_text(): #qiymet azn ile olanda hesablasin
-            total_price += int(price.get_text().replace(' ', '').replace('AZN', ''))
-            average += 1
+        text = price.get_text().strip()
+        if '₼' in text:
+            try:
+                clean_price = text.replace(' ', '').replace('₼', '')
+                total_price += int(clean_price)
+                count += 1
+            except:
+                pass
+
+    total_year = 0
+    year_count = 0
+    for year in years:
+        text = year.get_text().strip()
+        if text[:4].isdigit():
+            total_year += int(text[:4])
+            year_count += 1
 
     carnames = []
-    # carnames2 = []
-    xxx = 0
-    for car_name in car_names:
-        if car_name.get_text() not in carnames:
-            carnames.append(car_name.get_text())
-            # carnames2.append(car_name.get_text()+car_years[xxx][0:4].get_text())
-        xxx = xxx + 1
+    for car in car_names:
+        name = car.get_text().strip()
+        if name not in carnames:
+            carnames.append(name)
 
-    average_price = total_price / average # orta qiymet cixarilir
+    return total_price, count, total_year, year_count, carnames
 
-    total_year = sum([int(year.get_text()[0:4]) for year in years])
-    average_year = total_year / len(years) #orta il cixarilir
 
-    return average_price, len(prices), title, average_year, carnames
+# ---------------- MAIN ---------------- #
 
-i=0
-a=0
-say = 0
-il = 0
-names = []
-namess = []
-# yearss = []
-z=[]
+turbo = input('Unvani daxil et: ')
+max_page = int(input('Neçə səhifə yoxlansın: '))
 
-turbo = input('Unvani daxil et: ') #sehifenin unvani
-d = int(input('Ne qeder sehife yoxlasin: ')) #sehife sayi
-d+=1
+grand_total_price = 0
+grand_count = 0
+grand_total_year = 0
+grand_year_count = 0
+all_names = []
 
-def urlcixaran(turbo): 
-    url = turbo
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
+for page in range(1, max_page + 1):
+    new_url = set_page(turbo, page)
+    print(f"Yoxlanır: {new_url}")
 
-    sehifeNomresi = soup.find('span', class_='page current')
-    hazirkiSehifeNomresi = sehifeNomresi.next_element.next_element.next_element.next_element.get('href')
-    turbo = url[0:16] + hazirkiSehifeNomresi
-    return turbo
+    result = urlt(new_url)
 
-turbo = urlcixaran(turbo)
+    grand_total_price += result[0]
+    grand_count += result[1]
+    grand_total_year += result[2]
+    grand_year_count += result[3]
+    all_names += result[4]
 
-for x in range(1,d): #necenci sehifeden necenci sehifeye kimi hesablasin
-    say += 1
-    i = i + int(urlt(turbo, x)[0])
-    a = a + int(urlt(turbo, x)[1])
-    il = il + int(urlt(turbo, x)[3])
-    names = names + urlt(turbo, x)[4]
-    for name in names:
-        if name not in namess:
-            namess.append(name)
-    # yearss = yearss + urlt(turbo, x)[5]
-    z.append(urlt(turbo, x))
-    if x == 1:
-        ad = urlt(turbo, x)[2].get_text() #avtomobilin adin ad deyisenine elave edir
 
-print (f'{ad} ucun orta qiymet {int(i/say)}, orta buraxilis ili {int(il/say)}, umumi say {a}')
-iii=0
-namess.sort()
-for name in namess:
-    iii = iii + 1
-    print(f'{iii}){name}')
-# for year in yearss:
-#     iii = iii + 1
-#     print(f'{iii}){year}')
-# print(i, '\n', a, '\n', z)
+average_price = grand_total_price / grand_count if grand_count != 0 else 0
+average_year = grand_total_year / grand_year_count if grand_year_count != 0 else 0
+
+unique_names = sorted(list(set(all_names)))
+
+print("\n===== NƏTİCƏ =====")
+print(f'Orta qiymet: {int(average_price)} AZN')
+print(f'Orta buraxilis ili: {int(average_year)}')
+print(f'Umumi elan sayi: {grand_count}\n')
+
+for i, name in enumerate(unique_names, 1):
+    print(f'{i}) {name}')
